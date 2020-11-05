@@ -54,17 +54,20 @@ if prev_data:
     for s in prev_info:
         if s['lat'] != 0 or s['lon'] != 0:
             cur = next((x for x in info if x['station_id'] == s['station_id']), None)
+            tweet = ''
 
             if not cur:
-                change = True
-                tweet = 'BIXI station permanently removed from ' + s['name']
-                twit_api.update_status(status=tweet + ' http://maps.google.com/maps?q=' + str(s['lat']) + ','
-                                                                                        + str(s['lon']))
+                tweet = 'BIXI station permanently removed from '
+                cur = s
             elif s['lat'] != cur['lat'] or s['lon'] != cur['lon']:
+                tweet = 'BIXI station moved from ' + s['name'] + ' to '
+
+            if tweet:
                 change = True
-                tweet = 'BIXI station moved from ' + s['name'] + ' to ' + cur['name']
-                twit_api.update_status(status=tweet + ' http://maps.google.com/maps?q=' + str(cur['lat']) + ','
-                                                                                        + str(cur['lon']))
+                places = twit_api.reverse_geocode(lat=cur['lat'], long=cur['lon'])
+                place = next(x for x in places if x.place_type == "neighborhood")
+                tweet += cur['name'] + ' http://maps.google.com/maps?q=' + str(cur['lat']) + ',' + str(cur['lon'])
+                twit_api.update_status(status=tweet, place_id=place.id)
 
     for s in info:
         if s['lat'] != 0 or s['lon'] != 0:
@@ -88,8 +91,10 @@ if prev_data:
 
             if tweet:
                 change = True
-                twit_api.update_status(status=tweet + s['name'] + ' http://maps.google.com/maps?q=' + str(s['lat'])
-                                                                + ',' + str(s['lon']))
+                places = twit_api.reverse_geocode(lat=s['lat'], long=s['lon'])
+                place = next(x for x in places if x.place_type == "neighborhood")
+                tweet += s['name'] + ' http://maps.google.com/maps?q=' + str(s['lat']) + ',' + str(s['lon'])
+                twit_api.update_status(status=tweet, place_id=place.id)
 else:
     change = True
 
