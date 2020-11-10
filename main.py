@@ -65,7 +65,8 @@ if prev_data:
             if tweet:
                 change = True
                 places = twit_api.reverse_geocode(lat=cur['lat'], long=cur['lon'])
-                place = next(x for x in places if x.place_type == "neighborhood")
+                place = next((x for x in places if x.place_type == "neighborhood"),
+                             next(x for x in places if x.place_type == "city"))
                 tweet += cur['name'] + ' http://maps.google.com/maps?q=' + str(cur['lat']) + ',' + str(cur['lon'])
                 twit_api.update_status(status=tweet, place_id=place.id)
 
@@ -92,7 +93,8 @@ if prev_data:
             if tweet:
                 change = True
                 places = twit_api.reverse_geocode(lat=s['lat'], long=s['lon'])
-                place = next(x for x in places if x.place_type == "neighborhood")
+                place = next((x for x in places if x.place_type == "neighborhood"),
+                             next(x for x in places if x.place_type == "city"))
                 tweet += s['name'] + ' http://maps.google.com/maps?q=' + str(s['lat']) + ',' + str(s['lon'])
                 twit_api.update_status(status=tweet, place_id=place.id)
 else:
