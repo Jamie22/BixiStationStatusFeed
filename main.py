@@ -22,7 +22,8 @@ info = json.loads(info_req.text)['data']['stations']
 r = requests.post("https://pastebin.com/api/api_post.php",
                   data={'api_dev_key': config.get('pastebin', 'dev_key'),
                         'api_user_key': config.get('pastebin', 'user_key'),
-                        'api_option': 'list'})
+                        'api_option': 'list',
+                        'api_results_limit': 1000})
 
 if "Bad API request" in r.text:
     logging.error(r.text)
@@ -60,7 +61,12 @@ if prev_data:
                 tweet = 'BIXI station permanently removed from '
                 cur = s
             elif s['lat'] != cur['lat'] or s['lon'] != cur['lon']:
-                tweet = 'BIXI station moved from ' + s['name'] + ' to '
+                prev_stat = next(x for x in prev_status if x['station_id'] == s['station_id'])
+
+                if not prev_stat['is_installed']:
+                    tweet = 'Upcoming '
+
+                tweet += 'BIXI station moved from ' + s['name'] + ' to '
 
             if tweet:
                 change = True
