@@ -51,58 +51,49 @@ if prev_data:
     )
 
     twit_api = tweepy.API(auth)
+    tweets = []
 
-    for s in prev_info:
-        if s['lat'] != 0 or s['lon'] != 0:
-            cur = next((x for x in info if x['station_id'] == s['station_id']), None)
-            tweet = ''
+    for prev in prev_info:
+        if prev['lat'] != 0 or prev['lon'] != 0:
+            s = next((x for x in info if x['station_id'] == prev['station_id']), None)
 
-            if not cur:
-                tweet = 'BIXI station permanently removed from '
-                cur = s
-            elif s['lat'] != cur['lat'] or s['lon'] != cur['lon']:
-                prev_stat = next(x for x in prev_status if x['station_id'] == s['station_id'])
-
-                if not prev_stat['is_installed']:
-                    tweet = 'Upcoming '
-
-                tweet += 'BIXI station moved from ' + s['name'] + ' to '
-
-            if tweet:
-                change = True
-                places = twit_api.reverse_geocode(lat=cur['lat'], long=cur['lon'])
-                place = next((x for x in places if x.place_type == "neighborhood"),
-                             next(x for x in places if x.place_type == "city"))
-                tweet += cur['name'] + ' http://maps.google.com/maps?q=' + str(cur['lat']) + ',' + str(cur['lon'])
-                twit_api.update_status(status=tweet, place_id=place.id)
+            if not s:
+                tweets.append(('BIXI station permanently removed from ', prev))
 
     for s in info:
         if s['lat'] != 0 or s['lon'] != 0:
             stat = next(x for x in status if x['station_id'] == s['station_id'])
             prev = next((x for x in prev_info if x['station_id'] == s['station_id']), None)
-            tweet = ''
 
             if not prev or (prev['lat'] == 0 and prev['lon'] == 0):
                 if stat['is_installed']:
-                    tweet = 'New BIXI station installed at '
+                    tweets.append(('New BIXI station installed at ', s))
                 else:
-                    tweet = 'New BIXI station coming soon at '
+                    tweets.append(('New BIXI station coming soon at ', s))
             else:
                 prev_stat = next(x for x in prev_status if x['station_id'] == s['station_id'])
 
-                if stat['is_installed'] and not prev_stat['is_installed']:
-                    tweet = 'BIXI station installed at '
-
                 if not stat['is_installed'] and prev_stat['is_installed']:
-                    tweet = 'BIXI station removed from '
+                    tweets.append(('BIXI station removed from ', prev))
 
-            if tweet:
-                change = True
-                places = twit_api.reverse_geocode(lat=s['lat'], long=s['lon'])
-                place = next((x for x in places if x.place_type == "neighborhood"),
-                             next(x for x in places if x.place_type == "city"))
-                tweet += s['name'] + ' http://maps.google.com/maps?q=' + str(s['lat']) + ',' + str(s['lon'])
-                twit_api.update_status(status=tweet, place_id=place.id)
+                if prev['lat'] != s['lat'] or prev['lon'] != s['lon']:
+                    tweet = ''
+                    if not stat['is_installed'] or not prev_stat['is_installed']:
+                        tweet = 'Upcoming '
+
+                    tweet += 'BIXI station moved from ' + prev['name'] + ' to '
+                    tweets.append((tweet, s))
+
+                if stat['is_installed'] and not prev_stat['is_installed']:
+                    tweets.append(('BIXI station installed at ', s))
+
+    for t, s in tweets:
+        change = True
+        places = twit_api.reverse_geocode(lat=s['lat'], long=s['lon'])
+        place = next((x for x in places if x.place_type == "neighborhood"),
+                     next(x for x in places if x.place_type == "city"))
+        t += s['name'] + ' http://maps.google.com/maps?q=' + str(s['lat']) + ',' + str(s['lon'])
+        twit_api.update_status(status=t, place_id=place.id)
 else:
     change = True
 
