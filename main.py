@@ -5,6 +5,7 @@ import logging
 import requests
 import xml.etree.ElementTree as ElemTree
 import sys
+import geopy.distance
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -12,10 +13,10 @@ config = ConfigParser()
 config.read('config.ini')
 
 # Get the current station status and information JSON from the BIXI API
-status_req = requests.get('https://api-core.bixi.com/gbfs/en/station_status.json')
+status_req = requests.get('https://gbfs.velobixi.com/gbfs/en/station_status.json')
 status = json.loads(status_req.text)['data']['stations']
 
-info_req = requests.get('https://api-core.bixi.com/gbfs/en/station_information.json')
+info_req = requests.get('https://gbfs.velobixi.com/gbfs/en/station_information.json')
 info = json.loads(info_req.text)['data']['stations']
 
 # Retrieve the previous station status and information JSON from Pastebin
@@ -81,7 +82,14 @@ if prev_data:
                     if not stat['is_installed'] or not prev_stat['is_installed']:
                         tweet = 'Upcoming '
 
-                    tweet += 'BIXI station moved from ' + prev['name'] + ' to '
+                    dist = geopy.distance.distance((prev['lat'], prev['lon']), (s['lat'], s['lon'])).m
+
+                    if dist < 1000:
+                        str_dist = str(round(dist)) + ' m'
+                    else:
+                        str_dist = str(round(dist / 1000)) + ' km'
+
+                    tweet += 'BIXI station moved ' + str_dist + ' from ' + prev['name'] + ' to '
                     tweets.append((tweet, s))
 
                 if stat['is_installed'] and not prev_stat['is_installed']:
