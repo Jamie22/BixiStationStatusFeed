@@ -3,9 +3,9 @@ import tweepy
 from configparser import ConfigParser
 import logging
 import requests
-import xml.etree.ElementTree as ElemTree
-import sys
 import geopy.distance
+import os
+import redis
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -19,25 +19,13 @@ status = json.loads(status_req.text)['data']['stations']
 info_req = requests.get('https://gbfs.velobixi.com/gbfs/en/station_information.json')
 info = json.loads(info_req.text)['data']['stations']
 
-# Retrieve the previous station status and information JSON from Pastebin
-r = requests.post("https://pastebin.com/api/api_post.php",
-                  data={'api_dev_key': config.get('pastebin', 'dev_key'),
-                        'api_user_key': config.get('pastebin', 'user_key'),
-                        'api_option': 'list',
-                        'api_results_limit': 1000})
-
-if "Bad API request" in r.text:
-    logging.error(r.text)
-    sys.exit(r.text)
-
-# Parse the XML that is returned
-pastes = ElemTree.fromstring('<pastes>' + r.text + '</pastes>')
-prev_data = pastes.findall("paste[paste_title = 'bixi']")
+# Retrieve the previous station status and information JSON from Redis
+r = redis.from_url(os.environ.get("REDIS_URL"))
+prev_data = r.get('bixi')
 change = False
 
 if prev_data:
-    prev_data_req = requests.get('https://pastebin.com/raw/' + prev_data[-1].find('paste_key').text)
-    prev_obj = json.loads(prev_data_req.text)
+    prev_obj = json.loads(prev_data)
     prev_status = prev_obj['status']
     prev_info = prev_obj['info']
 
@@ -58,7 +46,7 @@ if prev_data:
         if prev['lat'] != 0 or prev['lon'] != 0:
             s = next((x for x in info if x['station_id'] == prev['station_id']), None)
 
-            if not s:
+            if not s or (s['lat'] == 0 and s['lon'] == 0):
                 tweets.append(('BIXI station permanently removed from ', prev))
 
     for s in info:
@@ -84,13 +72,19 @@ if prev_data:
 
                     dist = geopy.distance.distance((prev['lat'], prev['lon']), (s['lat'], s['lon'])).m
 
-                    if dist < 1000:
-                        str_dist = str(round(dist)) + ' m'
-                    else:
-                        str_dist = str(round(dist / 1000)) + ' km'
+                    if dist > 10:
+                        if dist < 1000:
+                            str_dist = str(round(dist)) + ' m'
+                        else:
+                            str_dist = str(round(dist / 1000)) + ' km'
 
-                    tweet += 'BIXI station moved ' + str_dist + ' from ' + prev['name'] + ' to '
-                    tweets.append((tweet, s))
+                        tweet += 'BIXI station moved ' + str_dist
+
+                        if prev['name'] != s['name']:
+                            tweet += ' from ' + prev['name']
+
+                        tweet += ' to '
+                        tweets.append((tweet, s))
 
                 if stat['is_installed'] and not prev_stat['is_installed']:
                     tweets.append(('BIXI station installed at ', s))
@@ -110,13 +104,4 @@ if change:
     info = [{"station_id": s['station_id'], "name": s['name'], "lat": s['lat'], "lon": s['lon']} for s in info]
     status = [{"station_id": s['station_id'], "is_installed": s['is_installed']} for s in status]
 
-    r = requests.post("https://pastebin.com/api/api_post.php",
-                      data={'api_dev_key': config.get('pastebin', 'dev_key'),
-                            'api_user_key': config.get('pastebin', 'user_key'),
-                            'api_option': 'paste',
-                            'api_paste_name': 'bixi',
-                            'api_paste_expire_date': '1W',
-                            'api_paste_code': json.dumps({"info": info, "status": status})})
-
-    if "Bad API request" in r.text:
-        logging.error(r.text)
+    r.set('bixi', json.dumps({"info": info, "status": status}))
