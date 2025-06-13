@@ -20,26 +20,22 @@ info_req = requests.get('https://gbfs.velobixi.com/gbfs/en/station_information.j
 info = json.loads(info_req.text)['data']['stations']
 
 # Retrieve the previous station status and information JSON from Redis
-r = redis.from_url(os.environ.get("REDIS_URL"))
+r = redis.from_url(os.environ.get("REDISCLOUD_URL"))
 prev_data = r.get('bixi')
 change = False
+
+twit_api = tweepy.Client(bearer_token=config.get('twitter', 'bearer_token'),
+                         consumer_key=config.get('twitter', 'consumer_key'),
+                         consumer_secret=config.get('twitter', 'consumer_secret'),
+                         access_token=config.get('twitter', 'access_token'),
+                         access_token_secret=config.get('twitter', 'access_token_secret'),
+                         wait_on_rate_limit=True)
+tweet_buffer = r.get("tweet_buffer").decode('utf-8')
 
 if prev_data:
     prev_obj = json.loads(prev_data)
     prev_status = prev_obj['status']
     prev_info = prev_obj['info']
-
-    auth = tweepy.OAuthHandler(
-        config.get('twitter', 'consumer_key'),
-        config.get('twitter', 'consumer_secret')
-    )
-
-    auth.set_access_token(
-        config.get('twitter', 'access_token'),
-        config.get('twitter', 'access_token_secret')
-    )
-
-    twit_api = tweepy.API(auth)
     tweets = []
 
     for prev in prev_info:
@@ -91,11 +87,11 @@ if prev_data:
 
     for t, s in tweets:
         change = True
-        places = twit_api.reverse_geocode(lat=s['lat'], long=s['lon'])
-        place = next((x for x in places if x.place_type == "neighborhood"),
-                     next(x for x in places if x.place_type == "city"))
         t += s['name'] + ' http://maps.google.com/maps?q=' + str(s['lat']) + ',' + str(s['lon'])
-        twit_api.update_status(status=t, place_id=place.id)
+        tweet_buffer += "|" + t
+
+    if change:
+        r.set("tweet_buffer", tweet_buffer)
 else:
     change = True
 
@@ -105,3 +101,10 @@ if change:
     status = [{"station_id": s['station_id'], "is_installed": s['is_installed']} for s in status]
 
     r.set('bixi', json.dumps({"info": info, "status": status}))
+
+tweets = [x for x in tweet_buffer.split("|") if x]
+
+while tweets:
+    twit_api.create_tweet(text=tweets[0])
+    del tweets[0]
+    r.set("tweet_buffer", "|".join(tweets))
